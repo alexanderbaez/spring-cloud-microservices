@@ -1,0 +1,92 @@
+resilience4j:
+  circuitbreaker:
+    configs:
+      defect:
+        sliding-window-size: 6
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 20s
+        permitted-number-of-calls-in-half-open-state: 4
+        slow-call-duration-threshold: 3s
+        slow-call-rate-threshold: 50
+    instances:
+      products:
+        base-config: defect
+  timelimiter:
+    configs:
+      defect:
+        timeout-duration: 3s
+    instances:
+      products:
+        base-config: defect
+
+spring:
+  security:
+    oauth2:
+      resourceServer:
+        jwt:
+          issuer-uri: ${IP_ADDR:http://127.0.0.1:9100}
+      client:
+        registration:
+          client-app:
+            provider: spring
+            client-id: gateway-app
+            client-secret: 12345
+            authorization-grant-type: authorization_code
+            redirect-uri: http://127.0.0.1:8080/authorized
+            scope:
+              - openid
+              - profile
+            client-name: client-app
+        provider:
+          spring:
+            issuer-uri: ${IP_ADDR:http://127.0.0.1:9100}
+  cloud:
+    gateway:
+      routes:
+        - id: msvc-oauth
+          uri: lb://msvc-oauth
+          predicates:
+            - Path=/api/security/**
+          filters:
+            - StripPrefix=2
+        - id: msvc-users
+          uri: lb://msvc-users
+          predicates:
+            - Path=/api/users/**
+          filters:
+            - StripPrefix=2
+        - id: msvc-products
+          uri: lb://msvc-products
+          predicates:
+            - Path=/api/products/**
+            #- Header=token, \d+
+            #- Method=GET, POST
+            #- Query=color
+            #- Cookie=color, azul
+            #- Header=Content-Type, application/json
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: products
+                statusCodes: 500
+                fallbackUri: forward:/api/items/5
+            - StripPrefix=2
+          # - EjemploCookie=Hola mi mensaje personalizado para productos!, user, Andres
+        - id: msvc-items
+          uri: lb://msvc-items
+          predicates:
+            - Path=/api/items/**
+          filters:
+            - StripPrefix=2
+            - AddRequestHeader=token-request, aabbsjdfjsaj
+            - AddResponseHeader=token-response, 234340823
+            - AddRequestParameter=name, Alexander
+            - SetResponseHeader=Content-Type, text/plain
+logging:
+  level:
+    org.springframework.cloud.gateway: DEBUG
+    org.springframework.cloud.sleuth: DEBUG
+    org.springframework.cloud.sleuth.zipkin: DEBUG
+    org.springframework.web.filter.CommonsRequestLoggingFilter: DEBUG
+
+
